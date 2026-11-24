@@ -1,6 +1,7 @@
 #include "ConsoleUI.h"
 
 #include "../Core/Game.h"
+#include "../Core/GameRules.h"
 #include "../Models/Pet.h"
 
 #include <iostream>
@@ -80,10 +81,8 @@ void showTitle() {
                  "================================\n";
 }
 
-void showPetSummary(const Pet& pet) {
-    std::cout << "当前宠物：" << pet.getName() << '\n'
-              << "宠物种类：" << pet.getSpecies() << '\n'
-              << "当前等级：" << pet.getLevel() << '\n';
+void showStat(const char* label, int value) {
+    std::cout << label << "：" << value << " / " << GameRules::maxStat << '\n';
 }
 }  // namespace
 
@@ -111,24 +110,28 @@ bool ConsoleUI::adoptPet(Game& game) {
     }
 }
 
-void ConsoleUI::showMenu(const Pet& pet) const {
-    std::cout << '\n';
-    showTitle();
-    showPetSummary(pet);
+void ConsoleUI::showMenu() const {
     std::cout << "\n[1] 查看宠物状态\n[2] 喂食\n[3] 玩耍\n"
-                 "[4] 休息\n[5] 清洁\n[6] 抚摸\n[0] 退出游戏\n\n";
+                 "[4] 休息\n[5] 清洁\n[6] 抚摸\n[7] 等待一小时\n[0] 退出游戏\n\n";
 }
 
-void ConsoleUI::showStatus(const Pet& pet) const {
-    std::cout << "\n---------- 宠物状态 ----------\n";
-    showPetSummary(pet);
-    std::cout << "饱腹度：" << pet.getSatiety() << '\n'
-              << "健康值：" << pet.getHealth() << '\n'
-              << "心情值：" << pet.getMood() << '\n'
-              << "精力值：" << pet.getEnergy() << '\n'
-              << "清洁度：" << pet.getHygiene() << '\n'
-              << "经验值：" << pet.getExperience() << '\n'
-              << "亲密度：" << pet.getIntimacy() << '\n';
+void ConsoleUI::showStatus(const Game& game) const {
+    const Pet& pet = *game.getPet();
+    std::cout << "时间：" << game.getTime().getTimeString() << "\n\n"
+              << "宠物名称：" << pet.getName() << '\n'
+              << "宠物种类：" << pet.getSpecies() << '\n'
+              << "成长阶段：" << pet.getGrowthStageName() << '\n'
+              << "当前等级：" << pet.getLevel() << '\n'
+              << "当前经验：" << pet.getExperience() << " / " << pet.getRequiredExperience() << "\n\n";
+    showStat("饱腹度", pet.getSatiety());
+    showStat("健康值", pet.getHealth());
+    showStat("心情值", pet.getMood());
+    showStat("精力值", pet.getEnergy());
+    showStat("清洁度", pet.getHygiene());
+    showStat("亲密度", pet.getIntimacy());
+    for (const auto& warning : pet.getStatusWarnings()) {
+        std::cout << warning << '\n';
+    }
 }
 
 void ConsoleUI::run(Game& game) {
@@ -141,15 +144,19 @@ void ConsoleUI::run(Game& game) {
     if (game.isRunning() && !game.getPet() && !adoptPet(game)) {
         game.quit();
     }
+    int choice = 0;
     while (game.isRunning()) {
-        const Pet& pet = *game.getPet();
-        showMenu(pet);
-        int choice = 0;
-        if (!readChoice("请输入操作：", 0, 6, choice) || choice == 0) {
-            game.quit();
-        } else if (choice == 1) {
-            showStatus(pet);
+        std::cout << '\n';
+        if (choice == 1) {
+            std::cout << "---------- 宠物状态 ----------\n";
         } else {
+            showTitle();
+        }
+        showStatus(game);
+        showMenu();
+        if (!readChoice("请输入操作：", 0, static_cast<int>(Action::Wait), choice) || choice == 0) {
+            game.quit();
+        } else if (choice != 1) {
             std::cout << game.perform(static_cast<Action>(choice)) << '\n';
         }
     }

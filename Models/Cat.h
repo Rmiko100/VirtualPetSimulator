@@ -7,5 +7,5 @@ class Cat : public Pet {
 public:
     using Pet::Pet;
     std::string getSpecies() const override;
-    std::string play() override;
+    InteractionResult play() override;
 };

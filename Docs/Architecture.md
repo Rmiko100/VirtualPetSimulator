@@ -1,48 +1,48 @@
-# 第一阶段架构
+# 第二阶段架构 · 时间与成长
 
-## 一次玩耍如何完成
-
-假设玩家领养了“小橘”。在主菜单输入 `3` 时，`ConsoleUI` 将编号转换为 `Action::Play`，交给 `Game::perform()`。`Game` 调用 `pet->play()`。由于 `pet` 实际指向 `Cat`，C++ 会执行 `Cat::play()`。该函数把心情增量 15、精力消耗 8 和动作文字传给 `Pet::tryPlay()`。精力足够时，模型同时更新心情与精力，返回动作文字。界面显示结果并再次展示主菜单。
+## 类之间的调用关系
 
 ```text
-main
- └─ ConsoleUI::run(game)
-     ├─ 领养 → Game::adopt(species, name) → 创建 Cat / Dog / Rabbit
-     ├─ 状态 → Game::getPet() → 通过 const Pet* 读取各项属性
-     ├─ 互动 → Game::perform(action)
-     │         ├─ feed() / rest() / clean() / stroke()
-     │         └─ pet->play() → 具体种类的 play() → Pet::tryPlay()
-     └─ 退出 → Game::quit() → 菜单循环结束
+main → ConsoleUI::run(game)
+         ├─ 领养 → Game::adopt() → 构造 Cat / Dog / Rabbit
+         ├─ 查看 → Game::getTime()、Game::getPet() → 读取时间及属性
+         ├─ 操作 → Game::perform(action)
+         │          ├─ Pet 的通用互动 / 具体种类的 play()
+         │          └─ Game::finishTurn(result, minutes, reward, resting)
+         │               ├─ TimeSystem::advanceTime() → 本回合跨过的整点数
+         │               ├─ Pet::applyHourlyDecay(resting) × 整点数
+         │               └─ Pet::addExperience() → 比较回合前后的等级和阶段
+         └─ 退出 → Game::quit()
 ```
 
-## 文件与职责
+当 `Game` 收到玩耍操作时，通过 `std::unique_ptr<Pet>` 调用虚函数 `play()`。猫、狗、兔子各自提供心情收益、精力消耗和动作文字，共用 `Pet::tryPlay()` 先检查精力。模型返回 `InteractionResult`，分别携带互动是否生效及反馈文字。`Game` 依据布尔值决定是否结算，不需要分析中文字符串。
 
-| 文件 | 职责 |
+等待由 `Game` 接收，直接推进一小时。退出、查看和非法菜单输入均不会调用结算函数。控制台只能从 `getTime()` 取得 `const TimeSystem&`。未来的图形界面可以调用相同的 `Game` 接口。
+
+## 时间和属性由谁保存
+
+| 文件与类型 | 负责的状态或操作 |
 | --- | --- |
-| `main.cpp` | 创建 `Game` 和 `ConsoleUI`，调用 `ui.run(game)`。 |
-| `CMakeLists.txt` | 列出编译单元，设置 C++17 与 MSVC 的 UTF-8 编译选项，生成控制台可执行文件。 |
-| `README.md` | 提供运行方法、编译步骤、菜单规则和手工验收示例。 |
-| `Models/Pet.h` | 声明抽象基类、私有属性、只读查询、通用互动和纯虚接口。 |
-| `Models/Pet.cpp` | 处理名称空白，初始化数值，定义析构函数和查询函数，实施互动规则及属性边界检查。 |
-| `Models/Cat.h`、`Models/Cat.cpp` | 头文件声明猫类及重写接口，实现文件返回“猫咪”并定义玩毛线球的增益和消耗。 |
-| `Models/Dog.h`、`Models/Dog.cpp` | 头文件声明狗类及重写接口，实现文件返回“狗狗”并定义玩飞盘的增益和消耗。 |
-| `Models/Rabbit.h`、`Models/Rabbit.cpp` | 头文件声明兔子类及重写接口，实现文件返回“兔子”并定义跳跃玩耍的增益和消耗。 |
-| `Core/Game.h` | 声明种类和操作枚举，以及领养、查询、互动和退出接口。 |
-| `Core/Game.cpp` | 按所选种类创建对象，管理其生命周期，按玩家的操作调用模型。 |
-| `UI/ConsoleUI.h` | 声明控制台界面及其运行入口。 |
-| `UI/ConsoleUI.cpp` | 负责中文输入输出、领养流程、菜单和状态显示、非法输入重试，并将有效操作交给游戏层。 |
-| `Systems/README.md` | 记录商店、背包、随机事件、存档等系统的预留位置和接入方式。 |
-| `Data/` | 为后续数据文件预留的空目录。 |
-| `Docs/Architecture.md` | 记录本阶段的调用关系、设计理由与下一阶段建议。 |
-| `bin/VirtualPetSimulator.exe` | 已从本项目构建的 Windows x64 Release 程序，可直接运行。 |
+| `Systems/TimeSystem.h`、`.cpp` | 以 64 位整数记录从第 1 天零点起算的分钟数。天、时、分和显示文字均由该值推导。推进 0 分钟有效，负数抛出 `std::invalid_argument`。 |
+| `Core/Game.h`、`.cpp` | 每局持有一只宠物、一个时钟和运行标志。接收操作，协调属性直接变化、时间推进、逐小时衰减及经验奖励。 |
+| `Core/GameRules.h` | 集中初始值、属性上限、动作消耗、经验奖励、警戒阈值、成长等级等参数，便于在一个位置调整平衡。 |
+| `Models/Pet.h`、`.cpp` | 保存名称和私有属性，实施边界检查，处理健康损失、经验和阶段判断，提供动态状态提示。 |
+| `Models/Cat`、`Dog`、`Rabbit` 的 `.h` 和 `.cpp` | 继承 `Pet`，各自重写种类名称和玩耍行为。共同规则由基类执行。 |
+| `UI/ConsoleUI.h`、`.cpp` | 领养、中文整行输入、数字校验、展示完整状态与操作结果。Windows 终端输入继续以宽字符读取并转换为 UTF-8。 |
+| `main.cpp` | 构造 `Game` 和 `ConsoleUI`，启动菜单循环。 |
+| `CMakeLists.txt` | 将游戏逻辑编为 `VirtualPetCore` 静态库，供菜单程序和核心测试共用同一份实现。 |
+| `Tests/Phase2Tests.cpp`、`Tests/ConsoleFlow.cmake` | 分别检查类接口及回合规则、启动可执行程序验证菜单行为，由 CTest 统一运行。 |
+| `README.md`、`Systems/README.md`、`Data/` | 使用说明、系统目录说明和预留数据目录。`bin/VirtualPetSimulator.exe` 是可直接运行的 Windows x64 Release 版本。 |
 
-## 面向对象知识点
+## 三个容易算错的边界
 
-- **封装**　`Pet` 的属性全部为 `private`。界面只能通过 `const Pet*` 读取状态。修改走 `feed()` 等行为函数，可变的状态数值统一通过 `std::clamp` 限制在 0～100。`tryPlay()` 先检查精力再修改，避免扣掉精力却没有完成玩耍。
-- **继承**　`Cat`、`Dog`、`Rabbit` 公有继承 `Pet`。三个类沿用基类构造函数和喂食、休息、清洁、抚摸的实现。
-- **多态**　`Pet::play()` 和 `Pet::getSpecies()` 是纯虚函数，派生类使用 `override` 实现它们。`Game` 只在领养时选择具体类型。之后同一次 `pet->play()` 调用会随实际对象执行不同的玩耍行为。
-- **构造与析构**　`Pet` 构造函数通过初始化列表设置名称和全部初值。`Game` 持有 `std::unique_ptr<Pet>`，生命周期结束时自动释放所领养的宠物。虚析构函数保证通过基类指针释放对象时，先调用派生类析构函数，再调用基类析构函数。
+1. **短操作跨整点。** 时间系统以推进前后累计小时数的差计算整点数。08:45 喂食 15 分钟触发一次衰减，08:05 喂食则只把时钟推进到 08:20。没有第二份“待结算分钟”需要与时钟同步。
+2. **休息与健康。** 休息先恢复精力，再跨过两个整点。每个整点仍减少饱腹度、心情和清洁度，只跳过精力衰减。每小时根据本次衰减后的数值判断健康损失，两个小时的健康损失可能不同。
+3. **有效互动与升级。** 状态封顶时，只要还有一项直接属性改变就算成功。经验按当前等级所需值逐次扣除，例如从 1 级一次获得 350 经验，将连续升至 3 级并留下 50 / 300。阶段由等级即时推导。
 
-## 下一阶段建议
+## 对应的 C++ 知识点
 
-建议先用一个最小 2D 窗口复用现有逻辑。领养按钮调用 `Game::adopt()`，玩耍按钮调用 `Game::perform(Action::Play)`，状态面板从 `getPet()` 读取最新数值。可以用同一只猫首次玩耍后“心情 95、精力 62”的结果，对照验收两种界面。后续系统可按课程进度逐个加入 `Systems/`。
+- **封装和只读访问。** 属性保持 `private`。界面拿到 `const Pet*` 和 `const TimeSystem&`，可以查询状态，同时由 `Game` 统一决定何时执行修改。
+- **继承、多态与对象生命周期。** `Cat` 等派生类用 `override` 重写纯虚函数。`Game` 使用 `std::unique_ptr<Pet>` 管理当前对象，配合基类虚析构函数自动释放资源。
+- **强类型枚举和派生值。** `enum class GrowthStage` 为幼年、成长、成年提供清楚的取值。`getGrowthStage()` 根据等级计算，升级时只需维护等级和经验两项数据。
+- **值类型与编译期常量。** `InteractionResult` 作为小结构体按值返回。`GameRules` 的 `static constexpr` 成员为多个类共享的数值提供有含义的名字。

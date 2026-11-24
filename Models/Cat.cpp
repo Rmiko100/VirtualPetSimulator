@@ -1,9 +1,11 @@
 #include "Cat.h"
 
+#include "Core/GameRules.h"
+
 std::string Cat::getSpecies() const {
     return "猫咪";
 }
 
-std::string Cat::play() {
-    return tryPlay(15, 8, "玩起了毛线球");
+InteractionResult Cat::play() {
+    return tryPlay(GameRules::catPlayMoodGain, GameRules::catPlayEnergyCost, "玩起了毛线球");
 }

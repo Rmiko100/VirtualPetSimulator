@@ -1,9 +1,11 @@
 #include "Dog.h"
 
+#include "Core/GameRules.h"
+
 std::string Dog::getSpecies() const {
     return "狗狗";
 }
 
-std::string Dog::play() {
-    return tryPlay(20, 15, "玩起了飞盘");
+InteractionResult Dog::play() {
+    return tryPlay(GameRules::dogPlayMoodGain, GameRules::dogPlayEnergyCost, "玩起了飞盘");
 }

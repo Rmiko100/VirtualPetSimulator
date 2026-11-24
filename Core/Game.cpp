@@ -1,4 +1,5 @@
 #include "Core/Game.h"
+#include "Core/GameRules.h"
 
 #include "Models/Cat.h"
 #include "Models/Dog.h"
@@ -31,6 +32,10 @@ const Pet* Game::getPet() const {
     return pet.get();
 }
 
+const TimeSystem& Game::getTime() const {
+    return time;
+}
+
 std::string Game::perform(Action action) {
     if (!running) {
         return "游戏已结束。";
@@ -41,22 +46,48 @@ std::string Game::perform(Action action) {
 
     switch (action) {
     case Action::Feed:
-        pet->feed();
-        return "喂食完成。";
+        return finishTurn(pet->feed(), GameRules::feedMinutes, GameRules::feedExperience);
     case Action::Play:
-        return pet->play();
+        return finishTurn(pet->play(), GameRules::playMinutes, GameRules::playExperience);
     case Action::Rest:
-        pet->rest();
-        return "休息完成。";
+        return finishTurn(pet->rest(), GameRules::restMinutes, GameRules::restExperience, true);
     case Action::Clean:
-        pet->clean();
-        return "清洁完成。";
+        return finishTurn(pet->clean(), GameRules::cleanMinutes, GameRules::cleanExperience);
     case Action::Stroke:
-        pet->stroke();
-        return "抚摸完成。";
+        return finishTurn(pet->stroke(), GameRules::strokeMinutes, GameRules::strokeExperience);
+    case Action::Wait:
+        // 等待的目的就是推进时间，在属性均为零时也可以进行。
+        return finishTurn({true, "等待了一小时。"}, GameRules::waitMinutes, GameRules::waitExperience);
     default:
         return "无法识别这项操作。";
     }
+}
+
+std::string Game::finishTurn(InteractionResult result, int minutes, int reward, bool resting) {
+    if (!result.changed) {
+        return result.message;
+    }
+
+    const int hours = time.advanceTime(minutes);
+    for (int i = 0; i < hours; ++i) {
+        pet->applyHourlyDecay(resting);
+    }
+
+    const int previousLevel = pet->getLevel();
+    const GrowthStage previousStage = pet->getGrowthStage();
+    pet->addExperience(reward);
+    if (reward > 0) {
+        result.message += " 获得 " + std::to_string(reward) + " 点经验。";
+    }
+    if (pet->getLevel() != previousLevel) {
+        result.message += " 升级至 " + std::to_string(pet->getLevel()) + " 级！";
+    }
+    if (pet->getGrowthStage() != previousStage) {
+        result.message += " 进入";
+        result.message += pet->getGrowthStageName();
+        result.message += "！";
+    }
+    return result.message;
 }
 
 bool Game::isRunning() const {

@@ -1,26 +1,35 @@
 cmake_minimum_required(VERSION 3.16)
 project(VirtualPetSimulator LANGUAGES CXX)
 
-add_executable(VirtualPetSimulator
-    main.cpp
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+if(MSVC)
+    add_compile_options(/utf-8 /W4 /permissive-)
+    # 让控制台程序及核心测试使用同一套静态运行库。
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+# 游戏和测试共享核心代码。核心模块仅依赖 C++ 标准库。
+add_library(VirtualPetCore STATIC
     Models/Pet.cpp    Models/Pet.h
     Models/Cat.cpp    Models/Cat.h
     Models/Dog.cpp    Models/Dog.h
     Models/Rabbit.cpp Models/Rabbit.h
     Core/Game.cpp     Core/Game.h
-    UI/ConsoleUI.cpp  UI/ConsoleUI.h
+    Core/GameRules.h
+    Systems/TimeSystem.cpp Systems/TimeSystem.h
 )
+target_include_directories(VirtualPetCore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-set_target_properties(VirtualPetSimulator PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED YES
-    CXX_EXTENSIONS NO
-)
-target_include_directories(VirtualPetSimulator PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(VirtualPetSimulator main.cpp UI/ConsoleUI.cpp UI/ConsoleUI.h)
+target_link_libraries(VirtualPetSimulator PRIVATE VirtualPetCore)
 
-if(MSVC)
-    target_compile_options(VirtualPetSimulator PRIVATE /utf-8 /W4 /permissive-)
-    # 静态链接运行库，方便把 Release 可执行文件带到其他 Windows 电脑。
-    set_property(TARGET VirtualPetSimulator PROPERTY
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(Phase2Tests Tests/Phase2Tests.cpp)
+    target_link_libraries(Phase2Tests PRIVATE VirtualPetCore)
+    add_test(NAME Phase2.Core COMMAND Phase2Tests)
+    add_test(NAME Phase2.Console COMMAND "${CMAKE_COMMAND}"
+        "-DGAME_EXE=$<TARGET_FILE:VirtualPetSimulator>" -P "${CMAKE_CURRENT_SOURCE_DIR}/Tests/ConsoleFlow.cmake")
 endif()
